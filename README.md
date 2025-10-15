@@ -141,17 +141,6 @@ nsut-club-connect/
 npx expo build:android
 ```
 
-## 🎥 Demo
-
-### Screenshots
-<!-- Add your screenshots here -->
-| Login Screen | Home Screen | Club Details | Event Calendar |
-|--------------|-------------|--------------|----------------|
-| ![Login]() | ![Home]() | ![Club]() | ![Calendar]() |
-
-### Video Demo
-[📺 Watch Demo Video](your-video-link-here)
-
 ## 📦 Deliverables
 
 - ✅ **Working Mobile App** with all core features
@@ -160,9 +149,6 @@ npx expo build:android
 - ✅ **Demo Video/Screenshots** showcasing functionality
 - ✅ **Firebase Integration** for authentication and data storage
 
-## 🔗 Download APK
-
-[📲 Download APK from GitHub Releases](your-github-releases-link)
 
 ## 👨‍💻 Development Phases
 
