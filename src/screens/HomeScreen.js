@@ -6,10 +6,10 @@ import {
   FlatList,
   RefreshControl,
 } from 'react-native';
-import { Appbar, Searchbar, Card, Title, Paragraph, ActivityIndicator } from 'react-native-paper';
-import { collection, getDocs } from 'firebase/firestore';
-import { firestore } from '../config/firebaseConfig';
+import { Appbar, Searchbar, ActivityIndicator, Text } from 'react-native-paper';
 import { useAuth } from '../context/AuthContext';
+import ClubCard from '../components/ClubCard';
+import { getAllClubs } from '../services/clubService';
 
 const HomeScreen = ({ navigation }) => {
   const [clubs, setClubs] = useState([]);
@@ -37,16 +37,12 @@ const HomeScreen = ({ navigation }) => {
 
   const loadClubs = async () => {
     try {
-      const clubsCollection = collection(firestore, 'clubs');
-      const clubSnapshot = await getDocs(clubsCollection);
-      const clubList = clubSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      const clubList = await getAllClubs();
       setClubs(clubList);
       setFilteredClubs(clubList);
     } catch (error) {
       console.error('Error loading clubs:', error);
+      alert('Failed to load clubs. Please try again.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -59,21 +55,17 @@ const HomeScreen = ({ navigation }) => {
   };
 
   const renderClubItem = ({ item }) => (
-    <Card
-      style={styles.card}
+    <ClubCard 
+      club={item} 
       onPress={() => navigation.navigate('ClubDetails', { club: item })}
-    >
-      <Card.Content>
-        <Title>{item.name}</Title>
-        <Paragraph numberOfLines={2}>{item.description}</Paragraph>
-      </Card.Content>
-    </Card>
+    />
   );
 
   if (loading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" />
+        <Text style={styles.loadingText}>Loading clubs...</Text>
       </View>
     );
   }
@@ -100,6 +92,14 @@ const HomeScreen = ({ navigation }) => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         contentContainerStyle={styles.list}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No clubs found</Text>
+            <Text style={styles.emptySubtext}>
+              {searchQuery ? 'Try a different search term' : 'No clubs available'}
+            </Text>
+          </View>
+        }
       />
     </View>
   );
@@ -114,6 +114,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#666',
+  },
   searchbar: {
     margin: 16,
     marginBottom: 8,
@@ -121,8 +126,21 @@ const styles = StyleSheet.create({
   list: {
     padding: 16,
   },
-  card: {
-    marginBottom: 12,
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  emptyText: {
+    fontSize: 18,
+    color: '#666',
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
   },
 });
 
