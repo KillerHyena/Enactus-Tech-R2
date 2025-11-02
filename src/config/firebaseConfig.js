@@ -15,6 +15,11 @@ const firebaseConfig = {
   measurementId: "G-ZCR7D73397"
 };
 
+// Validate required config
+if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+  console.error('Missing required Firebase configuration. Please check your environment variables.');
+}
+
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);

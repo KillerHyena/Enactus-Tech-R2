@@ -1,59 +1,62 @@
-// src/screens/Auth/RegisterScreen.js
 import React, { useState } from 'react';
 import {
   View,
+  Text,
+  TextInput,
+  TouchableOpacity,
   StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
   Alert,
+  ActivityIndicator
 } from 'react-native';
-import { Text, Title } from 'react-native-paper';
-import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
-import { auth, firestore } from '../../config/firebaseConfig';
-import CustomButton from '../../components/CustomButton';
-import InputField from '../../components/InputField';
-import Loader from '../../components/Loader';
+import { useAuth } from '../../context/AuthContext';
+import { authService } from '../../services/authService';
 
 const RegisterScreen = ({ navigation }) => {
   const [formData, setFormData] = useState({
-    fullName: '',
     email: '',
     password: '',
     confirmPassword: '',
-    rollNo: '',
+    displayName: '',
+    phone: ''
   });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+  const [passwordStrength, setPasswordStrength] = useState(null);
+
+  const { register } = useAuth();
 
   const validateForm = () => {
     const newErrors = {};
 
-    if (!formData.fullName.trim()) {
-      newErrors.fullName = 'Full name is required';
-    }
-
-    if (!formData.email.trim()) {
+    // Email validation
+    if (!formData.email) {
       newErrors.email = 'Email is required';
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'Email is invalid';
+    } else if (!authService.isValidEmail(formData.email)) {
+      newErrors.email = 'Please enter a valid email address';
     }
 
-    if (!formData.rollNo.trim()) {
-      newErrors.rollNo = 'Roll number is required';
-    }
-
+    // Password validation
     if (!formData.password) {
       newErrors.password = 'Password is required';
     } else if (formData.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
+      newErrors.password = 'Password must be at least 6 characters long';
+    } else {
+      const strength = authService.validatePasswordStrength(formData.password);
+      setPasswordStrength(strength);
+      if (!strength.isStrong) {
+        newErrors.password = 'Password is too weak';
+      }
     }
 
-    if (!formData.confirmPassword) {
-      newErrors.confirmPassword = 'Please confirm your password';
-    } else if (formData.password !== formData.confirmPassword) {
+    // Confirm password validation
+    if (formData.password !== formData.confirmPassword) {
       newErrors.confirmPassword = 'Passwords do not match';
+    }
+
+    // Display name validation
+    if (!formData.displayName.trim()) {
+      newErrors.displayName = 'Display name is required';
     }
 
     setErrors(newErrors);
@@ -63,14 +66,21 @@ const RegisterScreen = ({ navigation }) => {
   const handleInputChange = (field, value) => {
     setFormData(prev => ({
       ...prev,
-      [field]: value,
+      [field]: value
     }));
-    // Clear error when user starts typing
+
+    // Clear field error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({
         ...prev,
-        [field]: '',
+        [field]: ''
       }));
+    }
+
+    // Check password strength in real-time
+    if (field === 'password') {
+      const strength = authService.validatePasswordStrength(value);
+      setPasswordStrength(strength);
     }
   };
 
@@ -79,131 +89,155 @@ const RegisterScreen = ({ navigation }) => {
 
     setLoading(true);
     try {
-      // Create user in Firebase Auth
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        formData.email,
-        formData.password
+      await register(formData.email, formData.password, {
+        displayName: formData.displayName.trim(),
+        phone: formData.phone.trim() || null
+      });
+      
+      Alert.alert(
+        'Success',
+        'Account created successfully!',
+        [{ text: 'OK', onPress: () => navigation.navigate('Home') }]
       );
-
-      const user = userCredential.user;
-
-      // Update user profile with display name
-      await updateProfile(user, {
-        displayName: formData.fullName,
-      });
-
-      // Create user document in Firestore
-      await setDoc(doc(firestore, 'users', user.uid), {
-        uid: user.uid,
-        fullName: formData.fullName,
-        email: formData.email,
-        rollNo: formData.rollNo,
-        createdAt: new Date(),
-        role: 'student',
-      });
-
-      Alert.alert('Success', 'Account created successfully!');
-      // User will be automatically redirected to main app via AuthContext
     } catch (error) {
-      console.error('Registration error:', error);
-      let errorMessage = 'Registration failed. Please try again.';
-      
-      if (error.code === 'auth/email-already-in-use') {
-        errorMessage = 'This email is already registered.';
-      } else if (error.code === 'auth/weak-password') {
-        errorMessage = 'Password is too weak.';
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = 'Invalid email address.';
-      }
-      
-      Alert.alert('Registration Error', errorMessage);
+      Alert.alert('Registration Failed', error.message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  if (loading) {
-    return <Loader text="Creating your account..." />;
-  }
+  const renderPasswordStrength = () => {
+    if (!passwordStrength || !formData.password) return null;
+
+    const { requirements, score } = passwordStrength;
+    let strengthColor = '#ff4444'; // red
+    if (score >= 80) strengthColor = '#00C851'; // green
+    else if (score >= 60) strengthColor = '#ffbb33'; // yellow
+
+    return (
+      <View style={styles.strengthContainer}>
+        <Text style={styles.strengthLabel}>Password Strength:</Text>
+        <View style={styles.strengthBar}>
+          <View 
+            style={[
+              styles.strengthFill, 
+              { width: `${score}%`, backgroundColor: strengthColor }
+            ]} 
+          />
+        </View>
+        <Text style={[styles.strengthText, { color: strengthColor }]}>
+          {score >= 80 ? 'Strong' : score >= 60 ? 'Medium' : 'Weak'}
+        </Text>
+        
+        <View style={styles.requirements}>
+          <Text style={styles.requirementsTitle}>Requirements:</Text>
+          <Text style={[styles.requirement, requirements.minLength && styles.requirementMet]}>
+            ✓ At least 6 characters
+          </Text>
+          <Text style={[styles.requirement, requirements.hasUpperCase && styles.requirementMet]}>
+            ✓ Uppercase letter
+          </Text>
+          <Text style={[styles.requirement, requirements.hasLowerCase && styles.requirementMet]}>
+            ✓ Lowercase letter
+          </Text>
+          <Text style={[styles.requirement, requirements.hasNumbers && styles.requirementMet]}>
+            ✓ Number
+          </Text>
+          <Text style={[styles.requirement, requirements.hasSpecialChar && styles.requirementMet]}>
+            ✓ Special character
+          </Text>
+        </View>
+      </View>
+    );
+  };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <Title style={styles.title}>Create Account</Title>
-        <Text style={styles.subtitle}>Join ENACTUS Club Community</Text>
+    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      <Text style={styles.title}>Create Account</Text>
+      <Text style={styles.subtitle}>Join our community of event enthusiasts</Text>
 
-        <InputField
-          label="Full Name"
-          value={formData.fullName}
-          onChangeText={(text) => handleInputChange('fullName', text)}
-          error={!!errors.fullName}
-          errorText={errors.fullName}
-          autoCapitalize="words"
-          left={<TextInput.Icon icon="account" />}
-        />
+      <View style={styles.form}>
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Display Name *</Text>
+          <TextInput
+            style={[styles.input, errors.displayName && styles.inputError]}
+            placeholder="Enter your display name"
+            value={formData.displayName}
+            onChangeText={(value) => handleInputChange('displayName', value)}
+            autoCapitalize="words"
+          />
+          {errors.displayName && <Text style={styles.errorText}>{errors.displayName}</Text>}
+        </View>
 
-        <InputField
-          label="Roll Number"
-          value={formData.rollNo}
-          onChangeText={(text) => handleInputChange('rollNo', text)}
-          error={!!errors.rollNo}
-          errorText={errors.rollNo}
-          autoCapitalize="characters"
-          left={<TextInput.Icon icon="card-account-details" />}
-        />
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Email *</Text>
+          <TextInput
+            style={[styles.input, errors.email && styles.inputError]}
+            placeholder="Enter your email"
+            value={formData.email}
+            onChangeText={(value) => handleInputChange('email', value)}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
+          {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
+        </View>
 
-        <InputField
-          label="Email"
-          value={formData.email}
-          onChangeText={(text) => handleInputChange('email', text)}
-          error={!!errors.email}
-          errorText={errors.email}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          left={<TextInput.Icon icon="email" />}
-        />
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Phone Number</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Enter your phone number"
+            value={formData.phone}
+            onChangeText={(value) => handleInputChange('phone', value)}
+            keyboardType="phone-pad"
+          />
+        </View>
 
-        <InputField
-          label="Password"
-          value={formData.password}
-          onChangeText={(text) => handleInputChange('password', text)}
-          error={!!errors.password}
-          errorText={errors.password}
-          secureTextEntry
-          left={<TextInput.Icon icon="lock" />}
-        />
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Password *</Text>
+          <TextInput
+            style={[styles.input, errors.password && styles.inputError]}
+            placeholder="Create a password"
+            value={formData.password}
+            onChangeText={(value) => handleInputChange('password', value)}
+            secureTextEntry
+          />
+          {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+          {renderPasswordStrength()}
+        </View>
 
-        <InputField
-          label="Confirm Password"
-          value={formData.confirmPassword}
-          onChangeText={(text) => handleInputChange('confirmPassword', text)}
-          error={!!errors.confirmPassword}
-          errorText={errors.confirmPassword}
-          secureTextEntry
-          left={<TextInput.Icon icon="lock-check" />}
-        />
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Confirm Password *</Text>
+          <TextInput
+            style={[styles.input, errors.confirmPassword && styles.inputError]}
+            placeholder="Confirm your password"
+            value={formData.confirmPassword}
+            onChangeText={(value) => handleInputChange('confirmPassword', value)}
+            secureTextEntry
+          />
+          {errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword}</Text>}
+        </View>
 
-        <CustomButton
-          mode="contained"
+        <TouchableOpacity
+          style={[styles.registerButton, loading && styles.registerButtonDisabled]}
           onPress={handleRegister}
-          style={styles.registerButton}
-          icon="account-plus"
+          disabled={loading}
         >
-          Create Account
-        </CustomButton>
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.registerButtonText}>Create Account</Text>
+          )}
+        </TouchableOpacity>
 
-        <CustomButton
-          mode="text"
-          onPress={() => navigation.navigate('Login')}
-          style={styles.loginButton}
-        >
-          Already have an account? Sign In
-        </CustomButton>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        <View style={styles.loginContainer}>
+          <Text style={styles.loginText}>Already have an account? </Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+            <Text style={styles.loginLink}>Sign In</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </ScrollView>
   );
 };
 
@@ -212,31 +246,115 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
-  scrollContainer: {
-    flexGrow: 1,
-    padding: 24,
-    justifyContent: 'center',
+  contentContainer: {
+    padding: 20,
   },
   title: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: 'bold',
     textAlign: 'center',
     marginBottom: 8,
-    color: '#2c3e50',
+    color: '#333',
   },
   subtitle: {
     fontSize: 16,
     textAlign: 'center',
-    marginBottom: 32,
-    color: '#7f8c8d',
+    marginBottom: 30,
+    color: '#666',
+  },
+  form: {
+    width: '100%',
+  },
+  inputGroup: {
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+    color: '#333',
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    backgroundColor: '#f9f9f9',
+  },
+  inputError: {
+    borderColor: '#ff4444',
+  },
+  errorText: {
+    color: '#ff4444',
+    fontSize: 14,
+    marginTop: 4,
+  },
+  strengthContainer: {
+    marginTop: 8,
+  },
+  strengthLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 4,
+  },
+  strengthBar: {
+    height: 4,
+    backgroundColor: '#eee',
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  strengthFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  strengthText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  requirements: {
+    marginTop: 8,
+  },
+  requirementsTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 4,
+  },
+  requirement: {
+    fontSize: 11,
+    color: '#999',
+  },
+  requirementMet: {
+    color: '#00C851',
   },
   registerButton: {
-    marginTop: 16,
-    marginBottom: 12,
-    paddingVertical: 10,
+    backgroundColor: '#007AFF',
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 10,
   },
-  loginButton: {
-    marginTop: 8,
+  registerButtonDisabled: {
+    backgroundColor: '#ccc',
+  },
+  registerButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  loginContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 20,
+  },
+  loginText: {
+    color: '#666',
+  },
+  loginLink: {
+    color: '#007AFF',
+    fontWeight: '600',
   },
 });
 

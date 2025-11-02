@@ -1,117 +1,153 @@
-// src/screens/Auth/ForgotPassword.js
 import React, { useState } from 'react';
 import {
   View,
+  Text,
+  TextInput,
+  TouchableOpacity,
   StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
   Alert,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform
 } from 'react-native';
-import { Text, Title } from 'react-native-paper';
-import { sendPasswordResetEmail } from 'firebase/auth';
-import { auth } from '../../config/firebaseConfig';
-import CustomButton from '../../components/CustomButton';
-import InputField from '../../components/InputField';
-import Loader from '../../components/Loader';
+import { useAuth } from '../../context/AuthContext';
+import { authService } from '../../services/authService';
 
 const ForgotPassword = ({ navigation }) => {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [emailSent, setEmailSent] = useState(false);
+  const [errors, setErrors] = useState({});
 
-  const validateEmail = () => {
-    if (!email.trim()) {
-      setError('Email is required');
-      return false;
+  const { resetPassword } = useAuth();
+
+  const validateForm = () => {
+    const newErrors = {};
+
+    if (!email) {
+      newErrors.email = 'Email is required';
+    } else if (!authService.isValidEmail(email)) {
+      newErrors.email = 'Please enter a valid email address';
     }
-    if (!/\S+@\S+\.\S+/.test(email)) {
-      setError('Email is invalid');
-      return false;
-    }
-    setError('');
-    return true;
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleResetPassword = async () => {
-    if (!validateEmail()) return;
+    if (!validateForm()) return;
 
     setLoading(true);
     try {
-      await sendPasswordResetEmail(auth, email);
+      await resetPassword(email);
+      setEmailSent(true);
       Alert.alert(
-        'Password Reset Email Sent',
-        'Please check your email for instructions to reset your password.',
-        [
-          {
-            text: 'OK',
-            onPress: () => navigation.navigate('Login'),
-          },
-        ]
+        'Email Sent',
+        'Check your email for password reset instructions.',
+        [{ text: 'OK' }]
       );
     } catch (error) {
-      console.error('Password reset error:', error);
-      let errorMessage = 'Failed to send reset email. Please try again.';
-      
-      if (error.code === 'auth/user-not-found') {
-        errorMessage = 'No account found with this email address.';
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = 'Invalid email address.';
-      } else if (error.code === 'auth/too-many-requests') {
-        errorMessage = 'Too many attempts. Please try again later.';
-      }
-      
-      setError(errorMessage);
+      Alert.alert('Reset Failed', error.message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  if (loading) {
-    return <Loader text="Sending reset email..." />;
+  const handleInputChange = (value) => {
+    setEmail(value);
+    if (errors.email) {
+      setErrors(prev => ({ ...prev, email: '' }));
+    }
+  };
+
+  if (emailSent) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.successContainer}>
+          <Text style={styles.successIcon}>✓</Text>
+          <Text style={styles.successTitle}>Check Your Email</Text>
+          <Text style={styles.successMessage}>
+            We've sent password reset instructions to {email}
+          </Text>
+          <Text style={styles.successNote}>
+            If you don't see the email, check your spam folder or try again.
+          </Text>
+          
+          <TouchableOpacity
+            style={styles.backToLoginButton}
+            onPress={() => navigation.navigate('Login')}
+          >
+            <Text style={styles.backToLoginText}>Back to Login</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={styles.resendButton}
+            onPress={() => setEmailSent(false)}
+          >
+            <Text style={styles.resendText}>Try different email</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
   }
 
   return (
-    <KeyboardAvoidingView
+    <KeyboardAvoidingView 
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <Title style={styles.title}>Reset Password</Title>
-        <Text style={styles.subtitle}>
-          Enter your email address and we'll send you instructions to reset your password.
-        </Text>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View style={styles.content}>
+          <Text style={styles.title}>Reset Password</Text>
+          <Text style={styles.subtitle}>
+            Enter your email address and we'll send you instructions to reset your password.
+          </Text>
 
-        <InputField
-          label="Email"
-          value={email}
-          onChangeText={(text) => {
-            setEmail(text);
-            if (error) setError('');
-          }}
-          error={!!error}
-          errorText={error}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          left={<TextInput.Icon icon="email" />}
-          style={styles.input}
-        />
+          <View style={styles.form}>
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Email Address</Text>
+              <TextInput
+                style={[styles.input, errors.email && styles.inputError]}
+                placeholder="Enter your email"
+                value={email}
+                onChangeText={handleInputChange}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoComplete="email"
+              />
+              {errors.email && (
+                <Text style={styles.errorText}>{errors.email}</Text>
+              )}
+            </View>
 
-        <CustomButton
-          mode="contained"
-          onPress={handleResetPassword}
-          style={styles.resetButton}
-          icon="email-send"
-        >
-          Send Reset Instructions
-        </CustomButton>
+            <TouchableOpacity
+              style={[styles.resetButton, loading && styles.resetButtonDisabled]}
+              onPress={handleResetPassword}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.resetButtonText}>Send Reset Instructions</Text>
+              )}
+            </TouchableOpacity>
 
-        <CustomButton
-          mode="text"
-          onPress={() => navigation.navigate('Login')}
-          style={styles.backButton}
-        >
-          Back to Login
-        </CustomButton>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => navigation.goBack()}
+            >
+              <Text style={styles.backButtonText}>Back to Login</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.helpSection}>
+            <Text style={styles.helpTitle}>Need help?</Text>
+            <Text style={styles.helpText}>
+              If you're having trouble receiving the email, please contact our support team at support@campusconnect.com
+            </Text>
+          </View>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -122,34 +158,151 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
-  scrollContainer: {
+  scrollContent: {
     flexGrow: 1,
-    padding: 24,
+  },
+  content: {
+    flex: 1,
+    padding: 20,
     justifyContent: 'center',
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
     textAlign: 'center',
-    marginBottom: 16,
-    color: '#2c3e50',
+    marginBottom: 12,
+    color: '#333',
   },
   subtitle: {
     fontSize: 16,
     textAlign: 'center',
-    marginBottom: 32,
-    color: '#7f8c8d',
+    marginBottom: 40,
+    color: '#666',
     lineHeight: 22,
   },
+  form: {
+    width: '100%',
+    marginBottom: 40,
+  },
+  inputGroup: {
+    marginBottom: 25,
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+    color: '#333',
+  },
   input: {
-    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 15,
+    fontSize: 16,
+    backgroundColor: '#f9f9f9',
+  },
+  inputError: {
+    borderColor: '#ff4444',
+  },
+  errorText: {
+    color: '#ff4444',
+    fontSize: 14,
+    marginTop: 5,
   },
   resetButton: {
-    marginBottom: 16,
-    paddingVertical: 10,
+    backgroundColor: '#007AFF',
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  resetButtonDisabled: {
+    backgroundColor: '#ccc',
+  },
+  resetButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   backButton: {
-    marginTop: 8,
+    padding: 16,
+    alignItems: 'center',
+  },
+  backButtonText: {
+    color: '#007AFF',
+    fontSize: 16,
+  },
+  successContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  successIcon: {
+    fontSize: 64,
+    color: '#00C851',
+    marginBottom: 20,
+  },
+  successTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 15,
+    color: '#333',
+  },
+  successMessage: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 10,
+    color: '#666',
+    lineHeight: 22,
+  },
+  successNote: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 30,
+    color: '#999',
+    lineHeight: 20,
+  },
+  backToLoginButton: {
+    backgroundColor: '#007AFF',
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 15,
+  },
+  backToLoginText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  resendButton: {
+    padding: 16,
+    alignItems: 'center',
+    width: '100%',
+  },
+  resendText: {
+    color: '#007AFF',
+    fontSize: 16,
+  },
+  helpSection: {
+    backgroundColor: '#f8f9fa',
+    padding: 20,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#007AFF',
+  },
+  helpTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+    color: '#333',
+  },
+  helpText: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
   },
 });
 
